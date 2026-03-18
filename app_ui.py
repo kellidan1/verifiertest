@@ -6,7 +6,7 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 # Import backend logic
-from excel_marksheet_handler import extract_all_students_data, process_student_record
+from source.excel_marksheet_handler import extract_all_students_data, process_student_record
 
 class VerifierApp:
     def __init__(self, root):
@@ -31,7 +31,9 @@ class VerifierApp:
         
         btn_browse = tk.Button(frame_top, text="Browse...", command=self.browse_file)
         btn_browse.pack(side=tk.RIGHT)
-        
+
+        #TODO: Add Support for URLs of Files
+
         # Verification Button
         self.btn_verify = tk.Button(self.root, text="Verify Data", command=self.start_verification, width=20, height=2, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
         self.btn_verify.pack(pady=10)
@@ -67,7 +69,7 @@ class VerifierApp:
         thread.daemon = True
         thread.start()
         
-    def run_process(self, file_path):
+    def run_process(self, file_path: str):
         try:
             all_students = extract_all_students_data(file_path)
             total_students = len(all_students)

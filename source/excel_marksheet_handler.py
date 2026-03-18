@@ -1,14 +1,15 @@
+from openpyxl.workbook.workbook import _WorksheetOrChartsheetLike
+from openpyxl import Workbook
 import os
 import re
 import requests
 import openpyxl
-from openpyxl.styles import PatternFill
 import fitz
 import pytesseract
 from PIL import Image
 import io
-import concurrent.futures
-def extract_all_students_data(file_path):
+
+def extract_all_students_data(file_path: str):
     """
     Reads from row 2 to the end of an Excel file.
     Extracts name (col 2), sem1 marks (col 14), marksheet url 1 (col 17),
@@ -17,8 +18,10 @@ def extract_all_students_data(file_path):
     students_data = []
     try:
         # Load the workbook and select the active worksheet
-        wb = openpyxl.load_workbook(file_path, data_only=True)
+        wb: Workbook = openpyxl.load_workbook(file_path, data_only=True)
         sheet = wb.active
+        if sheet is None:
+            raise ValueError("No active sheet found in the workbook.")
     except Exception as e:
         print(f"Error reading Excel file: {e}")
         return students_data
@@ -56,7 +59,7 @@ def extract_all_students_data(file_path):
 def download_marksheet(url, save_filename="marksheet"):
     """
     Downloads a file (image or pdf) from the given URL 
-    and saves it into a 'tempmarksheet' directory.
+    and saves it into a 'temp' directory.
     """
     if not url:
         print("No valid URL provided to download.")
@@ -74,7 +77,7 @@ def download_marksheet(url, save_filename="marksheet"):
                 file_id = match_id.group(1)
                 url = f"https://drive.google.com/uc?export=download&id={file_id}"
 
-    folder_name = "tempmarksheet"
+    folder_name = "temp"
     
     # Create the folder if it doesn't already exist
     if not os.path.exists(folder_name):
@@ -258,73 +261,3 @@ def process_student_record(student_data):
         print(f"[{name_var}] Skipping Sem 2: No marksheet link provided.")
         
     return row, name_var, sem1_name_match, sem1_marks_match, sem2_name_match, sem2_marks_match, merit_scholarship, percentage
-
-
-if __name__ == "__main__":
-    # Example usage (assuming 'testcl.xlsx' exists in the same directory):
-    file_name = "testcl.xlsx"
-    if os.path.exists(file_name):
-         print("Reading Excel file...")
-         all_students = extract_all_students_data(file_name)    
-         print(f"Found {len(all_students)} student records to process.")
-         
-         # Load the workbook again to modify it
-         wb = openpyxl.load_workbook(file_name)
-         sheet = wb.active
-         
-         green_fill = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
-         red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-         
-         # Process all students sequentially
-         for student in all_students:
-             row, name_var, s1_n, s1_m, s2_n, s2_m, merit_val, perc_val = process_student_record(student)
-             
-             # Fill Sem 1 marks (col 14)
-             if s1_m is True:
-                 sheet.cell(row=row, column=14).fill = green_fill
-             elif s1_m is False:
-                 sheet.cell(row=row, column=14).fill = red_fill
-                 
-             # Fill Sem 2 marks (col 19)
-             if s2_m is True:
-                 sheet.cell(row=row, column=19).fill = green_fill
-             elif s2_m is False:
-                 sheet.cell(row=row, column=19).fill = red_fill
-                 
-             # Fill Name (col 2)
-             # Logic: If any evaluated name match is False => RED. If all evaluated are True => GREEN.
-             name_matches = [m for m in (s1_n, s2_n) if m is not None]
-             if name_matches:
-                 if all(name_matches):
-                     sheet.cell(row=row, column=2).fill = green_fill
-                 else:
-                     sheet.cell(row=row, column=2).fill = red_fill
-                     
-             # Fill Merit Scholarship (col 6)
-             if merit_val is not None and str(merit_val).strip() != "":
-                 perc_num = 0.0
-                 try:
-                     if isinstance(perc_val, str):
-                         perc_str = perc_val.replace('%', '').strip()
-                         perc_num = float(perc_str)
-                         if perc_val.endswith('%'):
-                             perc_num = perc_num / 100.0
-                         elif perc_num > 1.0:
-                             perc_num = perc_num / 100.0
-                     elif perc_val is not None:
-                         perc_num = float(perc_val)
-                         if perc_num > 1.0:
-                             perc_num = perc_num / 100.0
-                 except Exception:
-                     perc_num = 0.0
-                     
-                 if perc_num >= 0.65:
-                     sheet.cell(row=row, column=6).fill = green_fill
-                 else:
-                     sheet.cell(row=row, column=6).fill = red_fill
-                     
-         print("\nSequential processing completed!")
-         
-         output_filename = file_name.replace('.xlsx', '_output.xlsx')
-         wb.save(output_filename)
-         print(f"Saved highlighted verification file as: {output_filename}")

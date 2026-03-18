@@ -1,0 +1,5 @@
+openpyxl
+requests
+fitz
+pytesseract
+Pillow
