@@ -3,3 +3,4 @@ requests
 fitz
 pytesseract
 Pillow
+word2number

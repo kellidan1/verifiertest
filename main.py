@@ -141,11 +141,21 @@ class VerifierApp:
                 progress_percentage = ((index + 1) / total_students) * 100
                 self.root.after(0, self.progress_var.set, progress_percentage)
                 
+            print("--- Processing Completed ---")
+
+            # Create Output Directory if it does not exist
+            output_dir = os.path.join(os.getcwd(), "outputs")
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Create Output File
             output_filename = file_path.replace('.xlsx', '_output.xlsx')
-            wb.save(output_filename)
-            self.root.after(0, self.finish_processing, True, output_filename)
-            
+            output_path = os.path.join(output_dir, os.path.basename(output_filename))
+            wb.save(output_path)
+            self.root.after(0, self.finish_processing, True, output_path)
+            print("--- File Saved Sucessfully ---")
+
         except Exception as e:
+            print("--- Error Occured ---")            
             self.root.after(0, self.finish_processing, False, str(e))
             
     def finish_processing(self, success, result):
