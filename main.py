@@ -6,7 +6,8 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 # Import backend logic
-from source.excel_marksheet_handler import extract_all_students_data, process_student_record
+from source.excel_utils import extract_all_students_data
+from source.processor import process_student_record
 
 class VerifierApp:
     def __init__(self, root):
@@ -18,6 +19,16 @@ class VerifierApp:
         self.file_path_var = tk.StringVar()
         
         self.create_widgets()
+    
+    def is_red(cell):
+        if cell.fill is None:
+            return False
+        color = cell.fill.start_color
+        if color is None:
+            return False
+        
+        rgb = color.rgb
+        return rgb in ("FFFF0000", "FF0000")  # handle common red formats   
         
     def create_widgets(self):
         # File Selection Frame
