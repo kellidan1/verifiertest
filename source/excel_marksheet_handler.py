@@ -7,6 +7,49 @@ import fitz
 import pytesseract
 from PIL import Image
 import io
+from paddleocr import PaddleOCR
+import numpy as np
+
+
+# Initialize once globally
+paddle_ocr = PaddleOCR(use_angle_cls=True, lang='en')
+
+def extract_text_with_paddleocr(file_path):
+    text = ""
+
+    try:
+        if file_path.lower().endswith('.pdf'):
+            doc = fitz.open(file_path)
+            for page in doc:
+                pix = page.get_pixmap(dpi=300)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                img_array = np.array(img)
+
+                results = paddle_ocr.ocr(img_array, cls=True)
+
+                if results and results[0]:
+                    for line in results[0]:
+                        text += line[1][0] + " "
+
+            doc.close()
+
+        elif file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+            img = Image.open(file_path)
+            img_array = np.array(img)
+
+            results = paddle_ocr.ocr(img_array, cls=True)
+
+            if results and results[0]:
+                for line in results[0]:
+                    text += line[1][0] + " "
+
+        else:
+            print(f"Unsupported file type for PaddleOCR: {file_path}")
+
+    except Exception as e:
+        print(f"PaddleOCR error: {e}")
+
+    return text
 
 def extract_all_students_data(file_path: str):
     """
@@ -145,48 +188,45 @@ def extract_text_with_ocr(file_path):
     return text
 
 
-def verify_marksheet_data(ocr_text, expected_name, expected_marks):
-    """
-    Compares the expected name and marks with the text extracted via OCR.
-    Returns a dictionary with match results.
-    """
+def verify_marksheet_data(ocr_text, expected_name=None, expected_marks=None):
     results = {
-        "name_match": False,
-        "marks_match": False,
+        "name_match": None,
+        "marks_match": None,
         "ocr_marks": None
     }
-    
-    # Normalize strings for comparison (remove extra spaces, case-insensitive)
+
     def normalize_str(s):
         return re.sub(r'\s+', ' ', str(s)).strip().upper()
-        
-    ocr_text_normalized = normalize_str(ocr_text)
-    expected_name_normalized = normalize_str(expected_name)
-    expected_marks_str = str(expected_marks).strip()
-    
-    # Check if the exact expected name exists in the OCR text sequentially
-    if expected_name_normalized in ocr_text_normalized:
-        results["name_match"] = True
-            
-    # Check if the marks exist in the OCR text
-    if expected_marks_str in ocr_text_normalized:
-        results["marks_match"] = True
-        results["ocr_marks"] = expected_marks_str
-    else:
-        # Attempt to extract actual marks using regex near GRAND TOTAL
-        match = re.search(r'GRAND TOTAL.*?(\d{2,4})', ocr_text_normalized)
-        if match:
-            results["ocr_marks"] = match.group(1)
-        else:
-            # Fallback looking for word TOTAL
-            match2 = re.search(r'TOTAL.*?(\d{2,4})', ocr_text_normalized)
-            if match2:
-                results["ocr_marks"] = match2.group(1)
-            else:
-                results["ocr_marks"] = "Not Found"
-        
-    return results
 
+    ocr_text_normalized = normalize_str(ocr_text)
+
+    # --- NAME CHECK ---
+    if expected_name is not None:
+        expected_name_normalized = normalize_str(expected_name)
+        results["name_match"] = expected_name_normalized in ocr_text_normalized
+
+    # --- MARKS CHECK ---
+    if expected_marks is not None:
+        expected_marks_str = str(expected_marks).strip()
+
+        if expected_marks_str in ocr_text_normalized:
+            results["marks_match"] = True
+            results["ocr_marks"] = expected_marks_str
+        else:
+            results["marks_match"] = False
+
+            # Extract marks near TOTAL
+            match = re.search(r'GRAND TOTAL.*?(\d{2,4})', ocr_text_normalized)
+            if match:
+                results["ocr_marks"] = match.group(1)
+            else:
+                match2 = re.search(r'TOTAL.*?(\d{2,4})', ocr_text_normalized)
+                if match2:
+                    results["ocr_marks"] = match2.group(1)
+                else:
+                    results["ocr_marks"] = "Not Found"
+
+    return results
 
 def process_student_record(student_data):
     """
@@ -201,7 +241,7 @@ def process_student_record(student_data):
     sem2_name_match = None
     sem2_marks_match = None
     
-    # --- SEMESTER 1 ---
+        # --- SEMESTER 1 ---
     if link1_var:
         print(f"[{name_var}] Sem 1 Expected: {marks_sem1_var}")
         safe_name = "".join(c for c in str(name_var) if c.isalnum() or c in "_-").strip()
@@ -213,24 +253,49 @@ def process_student_record(student_data):
             
             print(f"[{name_var}] Verifying Sem 1 data...")
             res1 = verify_marksheet_data(ocr_text1, name_var, marks_sem1_var)
-            
+
+            # 🔁 Check what failed
+            need_name_check = not res1["name_match"]
+            need_marks_check = not res1["marks_match"]
+
+            if need_name_check or need_marks_check:
+                ocr_text1_paddle = extract_text_with_paddleocr(downloaded_file1)
+
+                res1_paddle = verify_marksheet_data(
+                    ocr_text1_paddle,
+                    expected_name=name_var if need_name_check else None,
+                    expected_marks=marks_sem1_var if need_marks_check else None
+                )
+
+                # Update only failed parts
+                if need_name_check:
+                    res1["name_match"] = res1_paddle["name_match"]
+
+                if need_marks_check:
+                    res1["marks_match"] = res1_paddle["marks_match"]
+                    res1["ocr_marks"] = res1_paddle["ocr_marks"]
+
             print(f"[{name_var}] Sem 1 Name Match: {'YES' if res1['name_match'] else 'NO'}")
             print(f"[{name_var}] Sem 1 Marks Match: {'YES' if res1['marks_match'] else 'NO'}")
+
             if not res1['marks_match']:
-                print(f"[{name_var}] -> Expected: {marks_sem1_var}, OCR Found: {res1['ocr_marks']}")
-            
+                print(f"[{name_var}] ❌ Marks mismatch")
+                print(f"   Expected: {marks_sem1_var}")
+                print(f"   OCR Found: {res1['ocr_marks']}")
+
             sem1_name_match = res1['name_match']
             sem1_marks_match = res1['marks_match']
-            
+
             if sem1_name_match and sem1_marks_match:
                 print(f"*** [{name_var}] SEM 1 VERIFICATION SUCCESSFUL! ***")
             else:
                 print(f"*** [{name_var}] SEM 1 VERIFICATION FAILED! ***")
     else:
         print(f"[{name_var}] Skipping Sem 1: No marksheet link provided.")
-        
+
     print("-" * 30)
-        
+
+
     # --- SEMESTER 2 ---
     if link2_var:
         print(f"[{name_var}] Sem 2 Expected: {marks_sem2_var}")
@@ -243,20 +308,44 @@ def process_student_record(student_data):
             
             print(f"[{name_var}] Verifying Sem 2 data...")
             res2 = verify_marksheet_data(ocr_text2, name_var, marks_sem2_var)
-            
+
+            # 🔁 Check what failed
+            need_name_check = not res2["name_match"]
+            need_marks_check = not res2["marks_match"]
+
+            if need_name_check or need_marks_check:
+                ocr_text2_paddle = extract_text_with_paddleocr(downloaded_file2)
+
+                res2_paddle = verify_marksheet_data(
+                    ocr_text2_paddle,
+                    expected_name=name_var if need_name_check else None,
+                    expected_marks=marks_sem2_var if need_marks_check else None
+                )
+
+                # Update only failed parts
+                if need_name_check:
+                    res2["name_match"] = res2_paddle["name_match"]
+
+                if need_marks_check:
+                    res2["marks_match"] = res2_paddle["marks_match"]
+                    res2["ocr_marks"] = res2_paddle["ocr_marks"]
+
             print(f"[{name_var}] Sem 2 Name Match: {'YES' if res2['name_match'] else 'NO'}")
             print(f"[{name_var}] Sem 2 Marks Match: {'YES' if res2['marks_match'] else 'NO'}")
+
             if not res2['marks_match']:
-                print(f"[{name_var}] -> Expected: {marks_sem2_var}, OCR Found: {res2['ocr_marks']}")
-            
+                print(f"[{name_var}] ❌ Marks mismatch")
+                print(f"   Expected: {marks_sem2_var}")
+                print(f"   OCR Found: {res2['ocr_marks']}")
+
             sem2_name_match = res2['name_match']
             sem2_marks_match = res2['marks_match']
-            
+
             if sem2_name_match and sem2_marks_match:
                 print(f"*** [{name_var}] SEM 2 VERIFICATION SUCCESSFUL! ***")
             else:
                 print(f"*** [{name_var}] SEM 2 VERIFICATION FAILED! ***")
     else:
-        print(f"[{name_var}] Skipping Sem 2: No marksheet link provided.")
-        
+        print(f"[{name_var}] Skipping Sem 2: No marksheet link provided.")       
+         
     return row, name_var, sem1_name_match, sem1_marks_match, sem2_name_match, sem2_marks_match, merit_scholarship, percentage
