@@ -1,0 +1,8 @@
+## COLORS
+Lime = "00FF00"
+Red = "FF0000"
+
+
+# THEMES
+SUCCESS_COLOR = Lime
+ERROR_COLOR = Red

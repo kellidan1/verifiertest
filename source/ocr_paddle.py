@@ -2,7 +2,7 @@ import fitz
 import numpy as np
 from PIL import Image
 import io
-from source.config import paddle_ocr,BASE_DIR
+from source.config import paddle_ocr
 import os
 
 

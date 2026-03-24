@@ -1,3 +1,5 @@
+from source.config import paddle_ocr
+from source.fees.fee_reciept_checker import fee_reciept_check
 import os
 import threading
 import tkinter as tk
@@ -11,7 +13,7 @@ from source.processor import process_student_record
 
 class VerifierApp:
     def __init__(self, root):
-        self.root = root
+        self.root: tk.Tk = root
         self.root.title("Marksheet Verifier Tool")
         self.root.geometry("500x250")
         self.root.resizable(False, False)
@@ -81,6 +83,7 @@ class VerifierApp:
         thread.start()
         
     def run_process(self, file_path: str):
+        # TODO: Cleanup outputs folder before starting        
         try:
             all_students = extract_all_students_data(file_path)
             total_students = len(all_students)
@@ -99,8 +102,7 @@ class VerifierApp:
             red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
             
             for index, student in enumerate(all_students):
-                current_name = student[1]
-                self.root.after(0, lambda i=index, n=current_name: self.status_label.config(text=f"Processing {n} ({i+1}/{total_students})..."))
+                self.root.after(0, lambda i=index, n=student[1]: self.status_label.config(text=f"Processing {n} ({i+1}/{total_students})..."))
                 
                 # Actually process the record via OCR
                 row, name_var, s1_n, s1_m, s2_n, s2_m, merit_val, perc_val = process_student_record(student)
@@ -152,6 +154,8 @@ class VerifierApp:
                 progress_percentage = ((index + 1) / total_students) * 100
                 self.root.after(0, self.progress_var.set, progress_percentage)
                 
+            fee_reciept_check(paddle_ocr, sheet, 29)
+
             print("--- Processing Completed ---")
 
             # Create Output Directory if it does not exist

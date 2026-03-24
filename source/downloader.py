@@ -28,8 +28,9 @@ def download_marksheet(url, save_filename="marksheet"):
     # ✅ FIX: correct temp folder path
     folder_path = os.path.join(BASE_DIR, "temp")
 
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+    file_path = os.path.join(folder_path, save_filename)
+
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
     try:
         print(f"Downloading from {url} ...")

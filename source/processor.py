@@ -4,14 +4,15 @@ from source.ocr_paddle import extract_text_with_paddleocr
 from source.verifier import verify_marksheet_data
 
 def process_student_record(student_data):
-    row, name, m1, link1, m2, link2, merit, percentage = student_data
+    row, name, m1, link1, m2, link2, merit, percentage, h1, h2 = student_data
 
-    def process_sem(link, marks, label):
+    def process_sem(link, marks, label, col_name):
         if not link:
-            print(f"[{name}] Skipping {label}")
+            print(f"[{name}] Skipping {label}, no link provided")
             return None, None
 
-        file = download_marksheet(link, f"{name}_{label}")
+        filename = f"{label}\\row{row}_{col_name}"
+        file = download_marksheet(link, filename)
 
         if not file:
             return None, None
@@ -44,8 +45,8 @@ def process_student_record(student_data):
 
         return res["name_match"], res["marks_match"]
 
-    s1n, s1m = process_sem(link1, m1, "Sem1")
+    s1n, s1m = process_sem(link1, m1, "Sem1", h1)
     print("-" * 30)
-    s2n, s2m = process_sem(link2, m2, "Sem2")
+    s2n, s2m = process_sem(link2, m2, "Sem2", h2)
 
     return row, name, s1n, s1m, s2n, s2m, merit, percentage

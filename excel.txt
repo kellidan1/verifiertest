@@ -1,0 +1,122 @@
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+
+# Load the Excel file
+file_path = "outputs/testcl_output.xlsx"  # replace with your file path
+workbook = load_workbook(file_path)
+
+row=1
+col=2
+
+# Select a sheet
+sheet = workbook.active  
+#test logic
+test_cell = sheet.cell(row=row, column=col)
+
+print(test_cell.value)
+
+
+
+
+
+signature workinh:
+import os
+import torch
+import fitz  # PyMuPDF
+from PIL import Image
+from transformers import AutoImageProcessor, AutoModelForObjectDetection
+
+# Initialize model and processor once to avoid reloading for every call
+try:
+    PROCESSOR = AutoImageProcessor.from_pretrained("mdefrance/yolos-base-signature-detection")
+    MODEL = AutoModelForObjectDetection.from_pretrained("mdefrance/yolos-base-signature-detection")
+except Exception as e:
+    print(f"Error loading model: {e}")
+    PROCESSOR = None
+    MODEL = None
+
+def detect_signatures(file_path):
+    """
+    Detects and prints signatures present in a file (image/pdf) using YOLOS model.
+    
+    Args:
+        file_path (str): The path to the image or PDF file.
+    """
+    if PROCESSOR is None or MODEL is None:
+        print("Error: Model not loaded correctly.")
+        return
+
+    try:
+        images = []
+        if file_path.lower().endswith('.pdf'):
+            # Convert PDF to images
+            doc = fitz.open(file_path)
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pix = page.get_pixmap()
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                images.append((img, f"Page {page_num + 1}"))
+            doc.close()
+        else:
+            # Load as image
+            img = Image.open(file_path).convert("RGB")
+            images.append((img, "Original Image"))
+
+        print(f"Signatures detected in {file_path}:")
+        
+        signatures_found_total = False
+        for image, label_str in images:
+            inputs = PROCESSOR(images=image, return_tensors="pt")
+            with torch.no_grad():
+                outputs = MODEL(**inputs)
+
+            # Post-processing
+            target_sizes = torch.tensor([image.size[::-1]])
+            results = PROCESSOR.post_process_object_detection(outputs, threshold=0.7, target_sizes=target_sizes)[0]
+
+            if len(results["scores"]) > 0:
+                signatures_found_total = True
+                print(f"  [{label_str}]:")
+                for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+                    box_list = [round(i, 2) for i in box.tolist()]
+                    print(f"    - Signature found with confidence {score.item():.2f} at coordinates: {box_list}")
+                    
+                    # Extract text underneath the signature
+                    try:
+                        xmin, ymin, xmax, ymax = box.tolist()
+                        img_w, img_h = image.size
+                        
+                        # Define region below signature
+                        # We take 20% padding on sides and about 50 pixels or 20% of signature height below
+                        padding_w = (xmax - xmin) * 0.2
+                        crop_left = max(0, xmin - padding_w)
+                        crop_right = min(img_w, xmax + padding_w)
+                        crop_top = ymax
+                        crop_bottom = min(img_h, ymax + max(50, (ymax - ymin) * 0.5))
+                        
+                        if crop_bottom > crop_top:
+                            crop_img = image.crop((crop_left, crop_top, crop_right, crop_bottom))
+                            # Use pytesseract to get text
+                            import pytesseract
+                            text_under = pytesseract.image_to_string(crop_img).strip()
+                            if text_under:
+                                print(f"      Text underneath: \"{text_under}\"")
+                    except Exception as ocr_err:
+                        print(f"      Warning: Could not extract text below signature: {ocr_err}")
+
+        if not signatures_found_total:
+            print("- No signatures detected in the entire file.")
+
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    # Example usage
+    import sys
+    if len(sys.argv) > 1:
+        test_file = sys.argv[1]
+        detect_signatures(test_file)
+    else:
+        print("Usage: python testsign.py <path_to_file>")

@@ -4,3 +4,6 @@ fitz
 pytesseract
 Pillow
 word2number
+transformers
+torch
+torchvision

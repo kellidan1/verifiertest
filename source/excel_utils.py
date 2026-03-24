@@ -11,6 +11,14 @@ def extract_all_students_data(file_path: str):
         print(f"Error reading Excel file: {e}")
         return students_data
 
+    # Get headers for col 17 and 22
+    def sanitize(s):
+        if not s: return ""
+        return "".join(c for c in str(s) if c.isalnum() or c in "_-").strip()
+    
+    h1 = sanitize(sheet.cell(row=1, column=17).value) or "Col17"
+    h2 = sanitize(sheet.cell(row=1, column=22).value) or "Col22"
+
     for row in range(2, sheet.max_row + 1):
         student_name = sheet.cell(row=row, column=2).value
         if not student_name:
@@ -24,7 +32,9 @@ def extract_all_students_data(file_path: str):
             sheet.cell(row=row, column=19).value,
             sheet.cell(row=row, column=22).value,
             sheet.cell(row=row, column=6).value,
-            sheet.cell(row=row, column=26).value
+            sheet.cell(row=row, column=26).value,
+            h1,
+            h2
         ))
 
     return students_data
